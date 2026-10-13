@@ -1,0 +1,113 @@
+"""
+Mock Server del Microservicio de Cuentas para pruebas locales e integración.
+Permite probar escenarios de cuenta válida, cuenta en otra moneda, cuenta bloqueada y abono de saldo.
+"""
+import uuid
+from typing import Dict
+from fastapi import FastAPI, HTTPException, status
+from pydantic import BaseModel
+
+app = FastAPI(title="Accounts Microservice (Mock)", version="1.0.0")
+
+# Base de datos simulada en memoria para cuentas
+ACCOUNTS_DB: Dict[str, dict] = {
+    "ACC-USD-88992211": {
+        "account_id": "ACC-USD-88992211",
+        "customer_id": "CUST-9922",
+        "currency": "USD",
+        "balance": 3000.00,
+        "status": "ACTIVE",
+        "allows_deposits": True,
+        "is_frozen": False,
+    },
+    "ACC-EUR-100293": {
+        "account_id": "ACC-EUR-100293",
+        "customer_id": "CUST-4411",
+        "currency": "EUR",
+        "balance": 500.00,
+        "status": "ACTIVE",
+        "allows_deposits": True,
+        "is_frozen": False,
+    },
+    "ACC-FROZEN-001": {
+        "account_id": "ACC-FROZEN-001",
+        "customer_id": "CUST-5511",
+        "currency": "USD",
+        "balance": 100.00,
+        "status": "FROZEN",
+        "allows_deposits": False,
+        "is_frozen": True,
+    },
+}
+
+
+class CreditRequest(BaseModel):
+    deposit_reference: str
+    amount: float
+    currency: str
+    channel: str
+    concept: str
+
+
+@app.get("/api/v1/accounts/{account_id}")
+async def get_account(account_id: str):
+    # Si la cuenta ya está en BD
+    if account_id in ACCOUNTS_DB:
+        return ACCOUNTS_DB[account_id]
+
+    # Reglas dinámicas por prefijo
+    if "404" in account_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cuenta no encontrada")
+    if "EUR" in account_id or "PEN" in account_id:
+        curr = "EUR" if "EUR" in account_id else "PEN"
+        return {
+            "account_id": account_id,
+            "currency": curr,
+            "status": "ACTIVE",
+            "allows_deposits": True,
+            "is_frozen": False,
+        }
+    if "FROZEN" in account_id:
+        return {
+            "account_id": account_id,
+            "currency": "USD",
+            "status": "FROZEN",
+            "allows_deposits": False,
+            "is_frozen": True,
+        }
+
+    # Por defecto crear dinámicamente cuenta USD activa
+    return {
+        "account_id": account_id,
+        "customer_id": f"CUST-{uuid.uuid4().hex[:6]}",
+        "currency": "USD",
+        "balance": 1000.00,
+        "status": "ACTIVE",
+        "allows_deposits": True,
+        "is_frozen": False,
+    }
+
+
+@app.post("/api/v1/accounts/{account_id}/credits", status_code=status.HTTP_201_CREATED)
+async def credit_account(account_id: str, request: CreditRequest):
+    acc = await get_account(account_id)
+    if not acc["allows_deposits"] or acc["is_frozen"]:
+        raise HTTPException(status_code=422, detail="La cuenta no admite abonos")
+
+    current_balance = acc.get("balance", 1000.00)
+    new_balance = current_balance + request.amount
+    acc["balance"] = new_balance
+
+    return {
+        "transaction_id": f"ACC-TX-{uuid.uuid4().hex[:8].upper()}",
+        "account_id": account_id,
+        "credited_amount": request.amount,
+        "new_balance": round(new_balance, 2),
+        "currency": request.currency,
+        "status": "SUCCESS",
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("mocks.accounts_service_mock:app", host="0.0.0.0", port=8081, reload=True)

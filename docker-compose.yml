@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # 1. Base de Datos Relacional PostgreSQL para Depósitos
+  postgres-db:
+    image: postgres:15-alpine
+    container_name: deposits-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: deposits_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d deposits_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. Servidor Mock del Microservicio de Cuentas
+  accounts-mock:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: accounts-mock
+    command: ["uvicorn", "mocks.accounts_service_mock:app", "--host", "0.0.0.0", "--port", "8081"]
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+    volumes:
+      - ./mocks:/app/mocks
+
+  # 3. Microservicio de Depósitos en Dólares
+  usd-deposit-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: usd-deposit-service
+    restart: unless-stopped
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+      accounts-mock:
+        condition: service_started
+    environment:
+      APP_NAME: usd-deposit-service
+      ENV: production
+      PORT: 8000
+      DATABASE_URL: postgresql+asyncpg://postgres:postgrespassword@postgres-db:5432/deposits_db
+      ACCOUNTS_SERVICE_URL: http://accounts-mock:8081
+      ACCOUNTS_SERVICE_TIMEOUT_SEC: 5.0
+      DAILY_LIMIT_USD: 20000.00
+      AML_THRESHOLD_USD: 10000.00
+    ports:
+      - "8000:8000"
+
+volumes:
+  postgres_data:
