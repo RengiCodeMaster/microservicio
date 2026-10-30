@@ -24,7 +24,7 @@ JsonType = JSON().with_variant(JSONB, "postgresql")
 class DepositDB(Base):
     __tablename__ = "usd_deposits"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
     target_account_id = Column(String(64), nullable=False, index=True)
     amount = Column(Numeric(15, 2), nullable=False)
     currency = Column(String(3), nullable=False, default="USD")
@@ -55,7 +55,7 @@ class DepositAuditLogDB(Base):
     __tablename__ = "deposit_audit_log"
 
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
-    deposit_id = Column(String(36), nullable=False, index=True)
+    deposit_id = Column(String(64), nullable=False, index=True)
     previous_status = Column(String(32), nullable=True)
     current_status = Column(String(32), nullable=False)
     changed_by = Column(String(64), nullable=False, default="SYSTEM")

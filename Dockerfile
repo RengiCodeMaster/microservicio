@@ -1,7 +1,7 @@
 # ==========================================
 # Etapa 1: Builder
 # ==========================================
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
@@ -16,12 +16,15 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 # ==========================================
 # Etapa 2: Runner (Producción Cloud)
 # ==========================================
-FROM python:3.11-slim as runner
+FROM python:3.11-slim AS runner
 
 WORKDIR /app
 
-# Crear usuario no privilegiado para seguridad bancaria
-RUN useradd -m -u 1000 appuser
+# Crear usuario no privilegiado para seguridad bancaria y herramienta del healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -m -u 1000 appuser
 
 # Copiar dependencias de Python del builder
 COPY --from=builder /root/.local /home/appuser/.local
@@ -31,11 +34,14 @@ ENV PYTHONDONTWRITEBYTECODE=1
 
 # Copiar código fuente
 COPY src/ /app/src/
+COPY mocks/ /app/mocks/
 COPY .env.example /app/.env
 
 RUN chown -R appuser:appuser /app
 
 USER appuser
+
+ENV PYTHONPATH=/app
 
 EXPOSE 8000
 
