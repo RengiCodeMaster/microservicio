@@ -1,98 +1,98 @@
-# SPEC-01: Dominio de Negocio y Reglas Financieras (Depósito en Dólares)
+# SPEC-01 — Dominio y reglas financieras
 
-## 1. Visión General
+Versión: 2.1. Marco: [SPEC-00](00_scope_and_sdd_governance.md).
 
-El **Microservicio de Depósitos en Dólares (USD Deposit Service)** es responsable del ciclo de vida completo de captación y acreditación de fondos en moneda extranjera (USD) hacia cuentas bancarias de la institución. Opera bajo estándares financieros de auditoría, trazabilidad y cumplimiento normativo.
+## 1. Responsabilidades e invariantes
 
----
+| ID | Regla obligatoria |
+| --- | --- |
+| DOM-001 | Operar exclusivamente en USD, sin conversión, comisión ni intereses. Cuentas es dueño del saldo. |
+| DOM-002 | Dinero con Decimal y dos decimales; no usar float ni redondear una entrada inválida. |
+| DOM-003 | Cada depósito genera como máximo un abono efectivo, incluso ante reintentos y caídas. |
+| DOM-004 | COMPLETED exige evidencia verificable de Cuentas y transaction_id real. Nunca fabricar un ID exitoso. |
+| DOM-005 | Timeout no demuestra rechazo ni reversión; mantener resultado incierto. |
+| DOM-006 | Cada transición se confirma junto con auditoría, reserva y trabajo pendiente en una transacción local. |
 
-## 2. Tipos de Operaciones Soportadas
+La solicitud procede sólo después de que el canal haya confirmado recepción física o liquidación de los fondos. El servicio no verifica billetes ni ejecuta liquidación interbancaria.
 
-1. **DEP_CASH_USD (Efectivo por Ventanilla / ATM):**
-   - Depósito de billetes físicos en dólares.
-   - Requiere validación de origen en canal físico (`BRANCH` o `ATM_DEPOSIT`).
-2. **DEP_TRANSFER_USD (Transferencia Interbancaria / Externa):**
-   - Fondos provenientes de redes interbancarias (ACH, SWIFT/Wire, transferencias inmediatas).
-   - Requiere `routing_number` o `swift_code` y número de referencia bancario de origen.
+## 2. Tipos, canales y origen
 
----
+Vocabulario único: BRANCH, ATM, WEB, MOBILE, PARTNER. Se elimina ATM_DEPOSIT.
 
-## 3. Matriz de Estados de la Transacción
+| Tipo | Canales v1 | Evidencia |
+| --- | --- | --- |
+| DEP_CASH_USD | BRANCH, ATM | Depositante, physical_receipt_id; branch_id y teller_id en BRANCH o atm_id en ATM. |
+| DEP_TRANSFER_USD | PARTNER | source_bank_id, bank_reference y routing_number o swift_code; fondos liquidados USD. |
 
-```mermaid
-stateDiagram-v2
-    [*] --> RECEIVED: Petición HTTP recibida
-    RECEIVED --> VALIDATING: Verificando idempotencia y AML
-    VALIDATING --> REJECTED: Regla de negocio o AML fallida
-    VALIDATING --> PENDING_CREDIT: Aprobado localmente, llamando a Cuentas
-    PENDING_CREDIT --> COMPLETED: Microservicio de Cuentas confirma abono
-    PENDING_CREDIT --> RETRYING: Timeout transitorio en Cuentas
-    RETRYING --> COMPLETED: Reintento exitoso
-    RETRYING --> FAILED_REVERSED: Timeout agotado / Compensación aplicada
-    PENDING_CREDIT --> FAILED_REVERSED: Rechazo explícito de Cuentas
-    COMPLETED --> [*]
-    REJECTED --> [*]
-    FAILED_REVERSED --> [*]
-```
+WEB/MOBILE: ERR_CHANNEL_NOT_SUPPORTED. teller puede registrar BRANCH; system registra ATM/PARTNER; client consulta sus cuentas; operations consulta y concilia dentro de su institución. Canal y origen deben estar autorizados por token: no elevar límites declarando BRANCH desde un cliente.
 
-### Definición de Estados:
+## 3. Política monetaria
 
-- **`RECEIVED`**: Petición registrada en base de datos con clave de idempotencia reservada.
-- **`VALIDATING`**: Evaluando validaciones de moneda, límites y políticas antifraude/AML.
-- **`PENDING_CREDIT`**: Esperando respuesta del Microservicio de Cuentas tras enviar la orden de abono.
-- **`COMPLETED`**: Saldo acreditado con éxito en la cuenta destino. Transacción finalizada.
-- **`REJECTED`**: La transacción no procedió (cuenta bloqueada, cuenta en otra divisa no autorizada, monto excede límites, cliente inactivo).
-- **`FAILED_REVERSED`**: Ocurrió un error no recuperable al llamar al servicio de Cuentas; se anula la transacción local y se notifica al canal.
+| ID | Parámetro | Valor inicial | Frontera |
+| --- | --- | --- | --- |
+| DOM-007 | Mínimo | 1.00 | Igual admitido. |
+| DOM-008 | Máximo BRANCH | 50000.00 | Igual admitido por canal, sujeto a límite acumulado. |
+| DOM-009 | Máximo ATM/PARTNER | 5000.00 | Igual admitido. |
+| DOM-010 | Límite móvil por cuenta | 20000.00 | Igual admitido; exceso rechazado. |
+| DOM-011 | Declaración AML | Desde 10000.00 | Umbral inclusive; exige formulario y fuente. |
 
----
+Políticas del proyecto, no certificación regulatoria. AML comprueba presencia/formato, no autenticidad ni riesgo. No existe excepción manual a límites.
 
-## 4. Reglas de Negocio Estrictas
+El máximo BRANCH de 50000.00 es un techo de canal: con cupo global 20000.00, un depósito de 50000.00 se rechaza. Permitirlo exige cambiar la política global y sus escenarios.
 
-### 4.1. Moneda y Precisión
+Para instante UTC t de admisión: sumar COMPLETED con completed_at > t−24 h y <= t, más todas las reservas activas, aunque sean anteriores a 24 h. Un resultado desconocido nunca libera cupo por antigüedad. La verificación y adquisición de reserva son atómicas por institución/cuenta.
 
-- **Moneda de destino obligatoria**: `USD` (ISO 4217).
-- Si la cuenta destino no es bimonetaria o no es una cuenta en USD, la operación se rechaza con código `ACCOUNT_CURRENCY_MISMATCH`.
-- **Precisión numérica**: 2 decimales fijos (`NUMERIC(15, 2)`). No se permiten fracciones de centavo.
+Ejemplo: cupo usado 19000.00 y dos solicitudes concurrentes de 1000.00; exactamente una se admite. Al completar se convierte la reserva en consumo confirmado sin doble conteo. Al rechazar definitivamente se libera. Guardar policy_version y valores efectivos; cambios de política no recalculan reservas anteriores.
 
-### 4.2. Límites y Cumplimiento Normativo (AML / PLD)
+## 4. Cuenta y orden de evaluación
 
-- **Monto mínimo por operación**: `$ 1.00 USD`.
-- **Monto máximo por operación (Canal Digital)**: `$ 5,000.00 USD`.
-- **Monto máximo por operación (Ventanilla / Branch)**: `$ 50,000.00 USD`.
-- **Regla UIA / AML (Prevención de Lavado de Activos)**:
-  - Operaciones individuales iguales o superiores a `$ 10,000.00 USD` disparan flag `requires_aml_declaration: true` y requieren un número de formulario de declaración jurada (`aml_form_id`). Si no está presente, se rechaza con `AML_DECLARATION_REQUIRED`.
-- **Límite diario acumulado por cuenta**: `$ 20,000.00 USD` (en las últimas 24 horas continuas).
+DOM-012: Cuentas confirma institución, customer_id, status=ACTIVE, currency=USD o MULTI_CURRENCY, allows_deposits=true, is_frozen=false. MULTI_CURRENCY exige enabled_currencies incluyendo USD. Campo ausente/tipo inválido es fallo contractual; no asumir autorización. Cuentas revalida elegibilidad al abonar.
 
-### 4.3. Política de Idempotencia Estricta
+Orden de creación: autenticación → estructura/headers → autorización de rol/canal/origen e institución del actor → idempotencia → T1 → VALIDATING → compatibilidad tipo/canal → límites por operación → AML → consulta de cuenta y confirmación de institución/elegibilidad → reserva diaria atómica → crédito. Reportar primera regla fallida; errores de estructura pueden agruparse por JSON Pointer. teller/system no necesitan authorized_account_ids: pueden crear para cualquier cuenta de su institución, cuya pertenencia confirma Cuentas después de T1 y antes de reservar. Lecturas usan el ámbito de SPEC-05; la consulta externa nunca amplía permisos.
 
-- Toda petición `POST` debe incluir el header `X-Idempotency-Key` (formato UUIDv4).
-- Ventana de validez: **24 horas**.
-- Si se recibe la misma clave con el mismo payload exacto: se retorna la respuesta almacenada sin reejecutar la lógica financiera.
-- Si se recibe la misma clave con un payload distinto (distinto monto, cuenta o referencia): se rechaza de inmediato con `409 Conflict` (`IDEMPOTENCY_CONFLICT`).
+DOM-016: si Cuentas responde con contrato válido pero institution_id distinto al del actor, o confirma cuenta inexistente, persistir REJECTED con ERR_ACCOUNT_NOT_FOUND, sin reserva ni crédito. La respuesta inicial es 404 con el depósito local y Location, sin revelar institución, propietario ni datos externos. Un replay autorizado repite esa respuesta; GET muestra sólo la representación local segura. Si antes se guardó 202, conservar ese replay y consultar el rechazo actual por GET.
 
----
+DOM-017: compatibilidad tipo/canal según la tabla de sección 2. Para WEB/MOBILE con rol creador, scope y claim de canal válidos, evaluar ERR_CHANNEL_NOT_SUPPORTED antes de exigir origen específico; no existe variante de origen habilitada para esos canales. Un canal no autorizado por token produce 403 antes de T1. Una combinación incompatible de canales v1 produce ERR_VALIDATION después de T1 si el body es estructuralmente válido.
 
-## 5. Integración con el Microservicio de Cuentas
+## 5. Estados y transiciones (DOM-015)
 
-### 5.1. Consulta Previa (`GET /api/v1/accounts/{account_id}`)
+| Estado | Significado | Cupo |
+| --- | --- | --- |
+| RECEIVED | Petición válida registrada. | Sin reserva. |
+| VALIDATING | Evaluación de reglas/cuenta. | Sin reserva. |
+| PENDING_CREDIT | Orden durable preparada. | Reserva activa. |
+| PENDING_RECONCILIATION | Dependencia impide terminar o resultado incierto. | Reserva activa si ya fue adquirida. |
+| COMPLETED | Abono confirmado y persistido. | Consumo por completed_at. |
+| REJECTED | Rechazo de negocio o prueba definitiva de ausencia de abono. | Reserva liberada. |
 
-Debe validar que
+Transiciones únicas:
+- RECEIVED → VALIDATING.
+- VALIDATING → PENDING_CREDIT, REJECTED o PENDING_RECONCILIATION.
+- PENDING_CREDIT → COMPLETED, REJECTED o PENDING_RECONCILIATION.
+- PENDING_RECONCILIATION → VALIDATING sólo si nunca se reservó/envió crédito.
+- PENDING_RECONCILIATION → PENDING_CREDIT, COMPLETED o REJECTED si tenía reserva; antes de reenviar consultar referencia externa.
+- COMPLETED y REJECTED son terminales.
 
-- `status == "ACTIVE"`.
-- `currency in ["USD", "MULTI_CURRENCY"]`.
-- `allows_deposits == true`.
-- `is_frozen == false`.
+RETRYING es metadato de intento. FAILED_REVERSED se elimina: v1 no tiene contrato de débito compensatorio. Ningún operador puede imponer COMPLETED ni declarar reversión local.
 
-### 5.2. Orden de Acreditación (`POST /api/v1/accounts/{account_id}/credits`)
+## 6. Idempotencia y origen
 
-- Payload enviado:
-  ```json
-  {
-    "transaction_reference": "DEP-USD-2026-98124",
-    "amount": 2500.00,
-    "currency": "USD",
-    "source_system": "MS_DEPOSITS_USD",
-    "description": "Depósito en ventanilla USD"
-  }
-  ```
-- Estrategia de fallo: Si la llamada devuelve timeout (504) o error de red, el microservicio entra en reintentos con backoff. Si se agota, pasa a compensación / cola de conciliación.
+DOM-013: unicidad por (institution_id, subject_id, operación, UUIDv4). Hash SHA-256 del cuerpo completo validado y canal; incluir notas, origen y AML, excluir token y correlation_id. Construir objeto con defaults explícitos: notes y aml_declaration ausentes se representan como null sólo en el objeto interno del hash. Canonicalizar con RFC 8785 y amount como cadena decimal. Cambiar orden de propiedades/espacios JSON no cambia hash; cambiar cadenas sí.
+
+Para operación RECONCILE no hay canal: hash del deposit_id de la ruta y cuerpo completo con reason. Para CREATE el objeto canónico tiene claves body y channel. Para RECONCILE tiene claves body y deposit_id. Ambos incluyen operation como clave superior para separar contratos.
+
+Misma clave/hash con resultado guardado: repetir código, body y Location iniciales, incluido 201, 202 o rechazo de negocio. GET devuelve estado actual. Competidor sin resultado inicial: 409 ERR_IDEMPOTENCY_IN_PROGRESS, Retry-After: 1; nunca segunda ejecución. Hash distinto: 409 ERR_IDEMPOTENCY_CONFLICT.
+
+Retener respuesta completa >=24 h desde su persistencia y mientras siga pendiente. Después puede conservarse sólo hash/vínculo: 409 ERR_IDEMPOTENCY_EXPIRED con deposit_id y Location si el recurso sigue disponible y visible. No reciclar clave, incluso después de archivar el depósito; conservar tombstones según SEC-002 y DAT-005. Un fallo sin commit durable no consume clave.
+
+DOM-014: evidencia única por (institución, tipo, emisor, referencia); emisor es branch_id, atm_id o source_bank_id. Nueva clave con evidencia usada: 409 ERR_ORIGIN_ALREADY_USED, sin depósito ni abono nuevos. Sólo divulgar recurso previo si actor tiene acceso.
+
+Para una clave existente del ámbito institution_id/subject_id, comprobar rol/scope/canal actuales y visibilidad del depósito antes de responder sobre hash o fase: origen ya no visible produce 404 conforme a SEC-001. Esta consulta local no autoriza una ejecución nueva; para clave nueva se exige autorización completa de origen antes de T1. Nunca buscar claves de otros sujetos/instituciones.
+
+## 7. Casos de uso
+
+CU-01 Crear: actor autorizado, fondos confirmados; registro durable, validación, reserva y crédito. 201 si completa en presupuesto HTTP o 202 consultable. Rechazo persistido genera REJECTED y Problem Details con deposit_id.
+CU-02 Consultar: verificar acceso por institución/cuenta en cada petición; obtener estado actual y motivo seguro.
+CU-03 Historial: filtrar autorización antes de contar/paginar; lista vacía si no hay resultados.
+CU-04 Comprobante: JSON estable únicamente COMPLETED; no factura fiscal.
+CU-05 Conciliar: consultar evidencia externa y recuperar con misma referencia, sin modificar monto ni cuenta.

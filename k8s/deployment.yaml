@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deposit
+  namespace: deposit
+  labels:
+    app: deposit
+    app.kubernetes.io/name: deposit
+    app.kubernetes.io/part-of: banking-microservices
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: deposit
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: deposit
+        app.kubernetes.io/name: deposit
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: deposit
+          image: 881893826841.dkr.ecr.us-east-1.amazonaws.com/deposit:v1
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: deposit-config
+          volumeMounts:
+            - name: data-storage
+              mountPath: /app/data
+          # Readiness Probe: Verifica que la API y su base de datos estén listas para recibir tráfico
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Liveness Probe: Reinicia el contenedor si el proceso principal entra en deadlock o deja de responder
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      volumes:
+        - name: data-storage
+          emptyDir: {}

@@ -1,26 +1,26 @@
-# Agente 03: Especialista en QA y Pruebas Automatizadas (QA & Test Agent)
+# Agente 03 — Aceptación y pruebas SDD
 
-## Rol y Objetivo
-Eres el **Ingeniero de Automatización de Pruebas (QA Lead)**. Tu misión es asegurar una cobertura mínima del 90%, garantizando que ninguna falla de concurrencia, límites o error en llamadas externas rompa el servicio financiero.
+## Objetivo
 
-## Escenarios Críticos de Prueba Obligatorios
-1. **Flujo Feliz (Happy Path)**:
-   - Depósito en USD de $1,500.00 a cuenta activa en USD. Verifica creación en BD, llamada exitosa al mock de Cuentas y retorno `201 Created`.
-2. **Pruebas de Idempotencia**:
-   - Dos peticiones idénticas concurrentes con la misma `X-Idempotency-Key`: solo una debe acreditar en el servicio de Cuentas; la segunda debe retornar la respuesta en caché.
-   - Petición con la misma clave pero diferente monto: debe retornar `409 Conflict`.
-3. **Casos Límite y AML**:
-   - Depósito >= $10,000 USD sin formulario AML: debe retornar `422 Unprocessable Entity` con `ERR_AML_DECLARATION_REQUIRED`.
-   - Depósito que hace superar el acumulado de $20,000 USD en 24h: debe retornar `422` con `ERR_DAILY_LIMIT_EXCEEDED`.
-4. **Resiliencia y Fallos Externos**:
-   - Timeout en el Microservicio de Cuentas: verificar reintentos y transición del estado a `FAILED_REVERSED` o `PENDING_RECONCILIATION`.
-   - Microservicio de Cuentas caído (503 / Circuit Breaker abierto): verificar respuesta rápida con `ERR_ACCOUNTS_SERVICE_UNAVAILABLE`.
-   - Cuenta receptora en otra divisa (EUR/PEN): verificar rechazo con `ERR_ACCOUNT_CURRENCY_MISMATCH`.
+Verificar los [52 escenarios de SPEC-07](../specs/07_acceptance_and_traceability.md) y las invariantes financieras. Cobertura porcentual es evidencia secundaria.
 
-## Herramientas
-- `pytest` y `pytest-asyncio`.
-- `respx` o `httpx_mock` para simular con precisión las respuestas del Microservicio de Cuentas.
-- SQLite en memoria (o PostgreSQL de pruebas en contenedor).
+## Reglas
 
-## Prompt de Activación / Ejecución
-> *"Actúa como el Agente QA. Genera la suite de tests en tests/ cubriendo happy path, idempotencia, límites AML y simulación de fallos externos con respx según los escenarios descritos."*
+- Traducir cada AC a prueba trazable, con resultados HTTP, DB, auditoría, cupo, jobs y ledger externo.
+- PostgreSQL obligatorio para locks, unicidad, concurrencia y recuperación; SQLite sólo para pruebas que no dependan de esas semánticas.
+- Usar conexiones/procesos independientes para carreras y workers.
+- Mock conforme al contrato de [SPEC-02](../specs/02_api_contracts_rfc7807.md), durable al reiniciar.
+- Probar abono seguido de timeout, crash antes del commit local, lease expirado y respuesta tardía.
+- Un competidor de idempotencia sin respuesta inicial recibe 409; reintento posterior obtiene replay.
+- No admitir FAILED_REVERSED como resultado de timeout.
+- Verificar aislamiento multiinstitución, autorización, ausencia de PII y errores coherentes.
+- Evaluar carga y recuperación de [SPEC-08](../specs/08_operations_and_delivery.md).
+- Marcar PASS/FAIL/NOT RUN con comandos, entorno y versión; no declarar éxito por inspección.
+
+## Entregable
+
+Suite y reporte por AC, requisitos cubiertos, fallos y límites del mock. No declarar v1 aceptada con escenario crítico fallido.
+
+## Activación
+
+“Diseña o ejecuta pruebas trazables de SPEC-07, incluyendo concurrencia y recuperación real sobre PostgreSQL, y entrega evidencia.”

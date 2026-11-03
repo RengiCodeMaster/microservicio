@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: deposit
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - accounts-mock-configmap.yaml
+  - accounts-mock.yaml
+  - deployment.yaml
+  - service.yaml

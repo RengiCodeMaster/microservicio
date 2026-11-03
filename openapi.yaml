@@ -1,0 +1,462 @@
+openapi: 3.1.0
+info:
+  title: USD Deposit Microservice
+  description: Microservicio bancario para la gestión, validación y acreditación de
+    depósitos en dólares americanos (USD).
+  version: 1.0.0
+paths:
+  /health/live:
+    get:
+      tags:
+      - Health & Monitoring
+      summary: Liveness Probe para Kubernetes / Docker
+      operationId: liveness_health_live_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /health/ready:
+    get:
+      tags:
+      - Health & Monitoring
+      summary: Readiness Probe para Kubernetes / Balanceadores
+      operationId: readiness_health_ready_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/v1/deposits/usd:
+    post:
+      tags:
+      - USD Deposits
+      summary: Procesar un depósito en dólares (USD)
+      description: Inicia, valida y acredita fondos en USD hacia una cuenta destino
+        cumpliendo reglas bancarias, AML e idempotencia.
+      operationId: create_usd_deposit_api_v1_deposits_usd_post
+      parameters:
+      - name: X-Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          description: UUIDv4 único por transacción
+          title: X-Idempotency-Key
+        description: UUIDv4 único por transacción
+      - name: X-Channel
+        in: header
+        required: false
+        schema:
+          $ref: '#/components/schemas/ChannelType'
+          description: Canal de operación
+          default: BRANCH
+        description: Canal de operación
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: ID de trazabilidad
+          title: X-Correlation-Id
+        description: ID de trazabilidad
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DepositCreateRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepositResponseDTO'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - USD Deposits
+      summary: Listar historial de depósitos en dólares
+      operationId: list_usd_deposits_api_v1_deposits_usd_get
+      parameters:
+      - name: target_account_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Filtrar por número de cuenta
+          title: Target Account Id
+        description: Filtrar por número de cuenta
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/DepositStatus'
+          - type: 'null'
+          description: Filtrar por estado
+          title: Status
+        description: Filtrar por estado
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepositHistoryResponseDTO'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/deposits/usd/{deposit_id}:
+    get:
+      tags:
+      - USD Deposits
+      summary: Consultar estado de depósito por ID
+      operationId: get_usd_deposit_api_v1_deposits_usd__deposit_id__get
+      parameters:
+      - name: deposit_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Deposit Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepositResponseDTO'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/deposits/usd/{deposit_id}/receipt:
+    get:
+      tags:
+      - USD Deposits
+      summary: Descargar comprobante digital de depósito
+      operationId: get_deposit_receipt_api_v1_deposits_usd__deposit_id__receipt_get
+      parameters:
+      - name: deposit_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Deposit Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    AmlDeclarationDTO:
+      properties:
+        aml_form_id:
+          type: string
+          title: Aml Form Id
+          example: AML-2026-00492
+        funds_source:
+          type: string
+          title: Funds Source
+          example: SALARY
+      type: object
+      required:
+      - aml_form_id
+      - funds_source
+      title: AmlDeclarationDTO
+    ChannelType:
+      type: string
+      enum:
+      - BRANCH
+      - ATM
+      - WEB
+      - MOBILE
+      - PARTNER
+      title: ChannelType
+    DepositCreateRequest:
+      properties:
+        target_account_id:
+          type: string
+          maxLength: 64
+          minLength: 5
+          title: Target Account Id
+          example: ACC-USD-88992211
+        amount:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+          title: Amount
+          example: 1500.5
+        currency:
+          type: string
+          pattern: ^USD$
+          title: Currency
+          description: 'Moneda obligatoria: USD'
+          default: USD
+        deposit_type:
+          $ref: '#/components/schemas/DepositType'
+          default: DEP_CASH_USD
+          example: DEP_CASH_USD
+        origin_details:
+          anyOf:
+          - $ref: '#/components/schemas/OriginDetailsDTO'
+          - type: 'null'
+        aml_declaration:
+          anyOf:
+          - $ref: '#/components/schemas/AmlDeclarationDTO'
+          - type: 'null'
+        notes:
+          anyOf:
+          - type: string
+            maxLength: 255
+          - type: 'null'
+          title: Notes
+      additionalProperties: false
+      type: object
+      required:
+      - target_account_id
+      - amount
+      title: DepositCreateRequest
+    DepositHistoryItemDTO:
+      properties:
+        deposit_id:
+          type: string
+          title: Deposit Id
+        amount:
+          type: string
+          title: Amount
+        currency:
+          type: string
+          title: Currency
+        status:
+          $ref: '#/components/schemas/DepositStatus'
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - deposit_id
+      - amount
+      - currency
+      - status
+      - created_at
+      title: DepositHistoryItemDTO
+    DepositHistoryResponseDTO:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/DepositHistoryItemDTO'
+          type: array
+          title: Items
+        pagination:
+          $ref: '#/components/schemas/DepositPaginationDTO'
+      type: object
+      required:
+      - items
+      - pagination
+      title: DepositHistoryResponseDTO
+    DepositPaginationDTO:
+      properties:
+        total:
+          type: integer
+          title: Total
+        limit:
+          type: integer
+          title: Limit
+        offset:
+          type: integer
+          title: Offset
+      type: object
+      required:
+      - total
+      - limit
+      - offset
+      title: DepositPaginationDTO
+    DepositResponseDTO:
+      properties:
+        deposit_id:
+          type: string
+          title: Deposit Id
+        status:
+          $ref: '#/components/schemas/DepositStatus'
+        target_account_id:
+          type: string
+          title: Target Account Id
+        amount:
+          type: string
+          title: Amount
+        currency:
+          type: string
+          title: Currency
+        fee_applied:
+          type: string
+          title: Fee Applied
+          default: '0.00'
+        net_credited_amount:
+          type: string
+          title: Net Credited Amount
+        account_service_tx_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Account Service Tx Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Completed At
+        receipt_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Receipt Url
+        error_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Reason
+      type: object
+      required:
+      - deposit_id
+      - status
+      - target_account_id
+      - amount
+      - currency
+      - net_credited_amount
+      - created_at
+      title: DepositResponseDTO
+    DepositStatus:
+      type: string
+      enum:
+      - RECEIVED
+      - VALIDATING
+      - PENDING_CREDIT
+      - COMPLETED
+      - REJECTED
+      - FAILED_REVERSED
+      title: DepositStatus
+    DepositType:
+      type: string
+      enum:
+      - DEP_CASH_USD
+      - DEP_TRANSFER_USD
+      title: DepositType
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    OriginDetailsDTO:
+      properties:
+        depositor_id_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Depositor Id Type
+          example: DNI
+        depositor_id_number:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Depositor Id Number
+          example: '74883321'
+        depositor_full_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Depositor Full Name
+          example: Carlos Gomez
+        branch_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Branch Id
+          example: BR-MIRAFLORES-01
+        teller_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Teller Id
+          example: USER-TL-509
+      type: object
+      title: OriginDetailsDTO
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
