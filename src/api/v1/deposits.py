@@ -15,25 +15,46 @@ from src.services.deposit_service import DepositService
 router = APIRouter(prefix="/api/v1/deposits/usd", tags=["USD Deposits"])
 
 
+def get_idempotency_key(
+    x_idempotency_key: Annotated[
+        Optional[str],
+        Header(alias="X-Idempotency-Key", description="UUIDv4 único por transacción (estándar bancario)"),
+    ] = None,
+    idempotency_key: Annotated[
+        Optional[str],
+        Header(alias="Idempotency-Key", description="UUIDv4 único por transacción (estándar IETF / Billetera)"),
+    ] = None,
+) -> str:
+    key = x_idempotency_key or idempotency_key
+    if not key:
+        raise AppException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            code="ERR_MISSING_IDEMPOTENCY_KEY",
+            title="Cabecera de Idempotencia Requerida",
+            detail="Se requiere la cabecera 'X-Idempotency-Key' o 'Idempotency-Key' con un UUIDv4 válido.",
+        )
+    return key
+
+
 @router.post(
     "",
     response_model=DepositResponseDTO,
     status_code=status.HTTP_201_CREATED,
     summary="Procesar un depósito en dólares (USD)",
-    description="Inicia, valida y acredita fondos en USD hacia una cuenta destino cumpliendo reglas bancarias, AML e idempotencia.",
+    description="Inicia, valida y acredita fondos en USD hacia una cuenta destino cumpliendo reglas bancarias, AML e idempotencia. Acepta tanto 'X-Idempotency-Key' como 'Idempotency-Key'.",
 )
 async def create_usd_deposit(
     request: DepositCreateRequest,
     response: Response,
     service: Annotated[DepositService, Depends(get_deposit_service)],
-    x_idempotency_key: Annotated[str, Header(alias="X-Idempotency-Key", description="UUIDv4 único por transacción")],
+    idempotency_key: Annotated[str, Depends(get_idempotency_key)],
     x_channel: Annotated[ChannelType, Header(alias="X-Channel", description="Canal de operación")] = ChannelType.BRANCH,
     x_correlation_id: Annotated[Optional[str], Header(alias="X-Correlation-ID", description="ID de trazabilidad")] = None,
 ):
     correlation_id = x_correlation_id or str(uuid.uuid4())
     status_code, result = await service.process_deposit(
         request=request,
-        idempotency_key=x_idempotency_key,
+        idempotency_key=idempotency_key,
         channel=x_channel,
         correlation_id=correlation_id,
     )

@@ -232,3 +232,63 @@ async def test_accounts_service_unavailable(client):
     assert res.status_code == 503
     assert res.json()["code"] == "ERR_ACCOUNTS_SERVICE_UNAVAILABLE"
 
+
+@respx.mock
+async def test_idempotency_key_standard_header(client):
+    account_id = "ACC-USD-88992211"
+    key = str(uuid.uuid4())
+
+    respx.get(f"{settings.ACCOUNTS_SERVICE_URL}/api/v1/accounts/{account_id}").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "account_id": account_id,
+                "status": "ACTIVE",
+                "currency": "USD",
+                "allows_deposits": True,
+                "is_frozen": False,
+            },
+        )
+    )
+    respx.post(f"{settings.ACCOUNTS_SERVICE_URL}/api/v1/accounts/{account_id}/credits").mock(
+        return_value=httpx.Response(
+            201,
+            json={
+                "transaction_id": "ACC-TX-5544",
+                "account_id": account_id,
+                "new_balance": 1250.00,
+                "credited_amount": 250.00,
+                "currency": "USD",
+                "status": "SUCCESS",
+            },
+        )
+    )
+
+    payload = {
+        "target_account_id": account_id,
+        "amount": 250.00,
+        "currency": "USD",
+        "deposit_type": "DEP_TRANSFER_USD",
+    }
+    # Enviar usando el encabezado estándar de Billetera: Idempotency-Key
+    headers = {
+        "Idempotency-Key": key,
+        "X-Channel": "PARTNER",
+    }
+
+    res = await client.post("/api/v1/deposits/usd", json=payload, headers=headers)
+    assert res.status_code == 201
+    assert res.json()["status"] == "COMPLETED"
+
+
+async def test_missing_idempotency_key(client):
+    payload = {
+        "target_account_id": "ACC-USD-88992211",
+        "amount": 100.00,
+        "currency": "USD",
+        "deposit_type": "DEP_CASH_USD",
+    }
+    # Sin ninguna cabecera de idempotencia
+    res = await client.post("/api/v1/deposits/usd", json=payload)
+    assert res.status_code == 422
+    assert res.json()["code"] == "ERR_MISSING_IDEMPOTENCY_KEY"

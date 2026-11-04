@@ -35,17 +35,10 @@ paths:
       - USD Deposits
       summary: Procesar un depósito en dólares (USD)
       description: Inicia, valida y acredita fondos en USD hacia una cuenta destino
-        cumpliendo reglas bancarias, AML e idempotencia.
+        cumpliendo reglas bancarias, AML e idempotencia. Acepta tanto 'X-Idempotency-Key'
+        como 'Idempotency-Key'.
       operationId: create_usd_deposit_api_v1_deposits_usd_post
       parameters:
-      - name: X-Idempotency-Key
-        in: header
-        required: true
-        schema:
-          type: string
-          description: UUIDv4 único por transacción
-          title: X-Idempotency-Key
-        description: UUIDv4 único por transacción
       - name: X-Channel
         in: header
         required: false
@@ -64,6 +57,26 @@ paths:
           description: ID de trazabilidad
           title: X-Correlation-Id
         description: ID de trazabilidad
+      - name: X-Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: UUIDv4 único por transacción (estándar bancario)
+          title: X-Idempotency-Key
+        description: UUIDv4 único por transacción (estándar bancario)
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: UUIDv4 único por transacción (estándar IETF / Billetera)
+          title: Idempotency-Key
+        description: UUIDv4 único por transacción (estándar IETF / Billetera)
       requestBody:
         required: true
         content:
