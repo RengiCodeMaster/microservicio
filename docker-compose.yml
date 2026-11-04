@@ -5,9 +5,9 @@ services:
     container_name: deposits-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
-      POSTGRES_DB: deposits_db
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgrespassword}
+      POSTGRES_DB: ${POSTGRES_DB:-deposits_db}
     ports:
       - "5432:5432"
     volumes:
@@ -51,9 +51,9 @@ services:
         condition: service_started
     environment:
       APP_NAME: usd-deposit-service
-      ENV: production
+      ENV: ${ENV:-development}
       PORT: 8000
-      DATABASE_URL: postgresql+asyncpg://postgres:postgrespassword@postgres-db:5432/deposits_db
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgrespassword}@postgres-db:5432/${POSTGRES_DB:-deposits_db}
       ACCOUNTS_SERVICE_URL: http://accounts-mock:8081
       ACCOUNTS_SERVICE_TIMEOUT_SEC: 5.0
       DAILY_LIMIT_USD: 20000.00
