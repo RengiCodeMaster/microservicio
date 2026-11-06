@@ -8,11 +8,11 @@ Este documento contiene la información técnica, URLs, encabezados y especifica
 
 | Parámetro | Detalle |
 | :--- | :--- |
-| **URL Base (Internet / HTTP)** | `http://a0c0cac99b38740d29afe8aee26ac890-190893130.us-east-1.elb.amazonaws.com` |
-| **Salud (Liveness)** | `GET http://a0c0cac99b38740d29afe8aee26ac890-190893130.us-east-1.elb.amazonaws.com/health/live` |
-| **Salud (Readiness)** | `GET http://a0c0cac99b38740d29afe8aee26ac890-190893130.us-east-1.elb.amazonaws.com/health/ready` |
-| **Documentación Swagger / OpenAPI** | `http://a0c0cac99b38740d29afe8aee26ac890-190893130.us-east-1.elb.amazonaws.com/docs` |
-| **Especificación OpenAPI (JSON)** | `http://a0c0cac99b38740d29afe8aee26ac890-190893130.us-east-1.elb.amazonaws.com/openapi.json` |
+| **URL Base (Internet / HTTP)** | `http://a79e1592417ac404992dde1843665a69-846392940.us-east-1.elb.amazonaws.com` |
+| **Salud (Liveness)** | `GET http://a79e1592417ac404992dde1843665a69-846392940.us-east-1.elb.amazonaws.com/health/live` |
+| **Salud (Readiness)** | `GET http://a79e1592417ac404992dde1843665a69-846392940.us-east-1.elb.amazonaws.com/health/ready` |
+| **Documentación Swagger / OpenAPI** | `http://a79e1592417ac404992dde1843665a69-846392940.us-east-1.elb.amazonaws.com/docs` |
+| **Especificación OpenAPI (JSON)** | `http://a79e1592417ac404992dde1843665a69-846392940.us-east-1.elb.amazonaws.com/openapi.json` |
 | **Región AWS** | `us-east-1` (N. Virginia) |
 | **Clúster EKS** | `medio-curso-eks` (Namespace: `deposit`) |
 | **Moneda admitida** | Exclusivamente **`USD`** (Dólares Americanos) |

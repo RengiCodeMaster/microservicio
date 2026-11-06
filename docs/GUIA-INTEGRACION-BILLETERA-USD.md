@@ -6,6 +6,9 @@ Esta guía contiene la información exacta y ejemplos listos para que el equipo 
 
 ## 1. Endpoint Principal
 
+- **URL Base:** http://a79e1592417ac404992dde1843665a69-846392940.us-east-1.elb.amazonaws.com
+- **Swagger Docs:** http://a79e1592417ac404992dde1843665a69-846392940.us-east-1.elb.amazonaws.com/docs
+
 - **Método:** `POST`
 - **Ruta:** `/api/v1/deposits/usd`
 - **Content-Type:** `application/json`
@@ -14,17 +17,18 @@ Esta guía contiene la información exacta y ejemplos listos para que el equipo 
 
 ## 2. Cabeceras HTTP
 
-| Cabecera | Requerido | Descripción | Ejemplo |
-| :--- | :--- | :--- | :--- |
+| Cabecera                                                    | Requerido     | Descripción                                                                            | Ejemplo                                  |
+| :---------------------------------------------------------- | :------------ | :-------------------------------------------------------------------------------------- | :--------------------------------------- |
 | **`Idempotency-Key`** *(o `X-Idempotency-Key`)* | **Sí** | UUIDv4 único por transacción. Previene duplicidad de cobros si hay reintentos de red. | `550e8400-e29b-41d4-a716-446655440000` |
-| **`X-Channel`** | Opcional | Canal que origina la operación. Usar `PARTNER` o `WEB`. (Default: `BRANCH`) | `PARTNER` |
-| **`X-Correlation-Id`** | Opcional | ID de trazabilidad distribuida para logs. Si se omite, se genera uno nuevo. | `7cd14140-2c6d-4fac-b522-76e66a51e2aa` |
+| **`X-Channel`**                                     | Opcional      | Canal que origina la operación. Usar `PARTNER` o `WEB`. (Default: `BRANCH`)      | `PARTNER`                              |
+| **`X-Correlation-Id`**                              | Opcional      | ID de trazabilidad distribuida para logs. Si se omite, se genera uno nuevo.             | `7cd14140-2c6d-4fac-b522-76e66a51e2aa` |
 
 ---
 
 ## 3. Cuerpo de la Petición (Payload)
 
 ### Mapeo desde Billetera USD:
+
 - `cuenta_destino_id` ➡️ `target_account_id`
 - `monto` ➡️ `amount` (string o número decimal con 2 decimales, ej: `250.00`)
 - `moneda` ➡️ `currency` (`"USD"`)
@@ -50,7 +54,9 @@ Esta guía contiene la información exacta y ejemplos listos para que el equipo 
 ## 4. Respuestas del Servicio
 
 ### ✅ Éxito (HTTP 201 Created)
+
 Devuelve el detalle del depósito confirmado y el código contable de transacción:
+
 ```json
 {
   "deposit_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
@@ -69,6 +75,7 @@ Devuelve el detalle del depósito confirmado y el código contable de transacci�
 ```
 
 ### 🔁 Reintento Seguro / Idempotencia (HTTP 201 con datos previos)
+
 Si la Billetera reenvía la misma `Idempotency-Key` con el mismo payload, el servicio responde inmediatamente con el resultado anterior sin volver a abonar dinero.
 
 ### ⚠️ Errores Financieros y de Cumplimiento (Formato RFC 7807)
@@ -79,6 +86,7 @@ Si la Billetera reenvía la misma `Idempotency-Key` con el mismo payload, el ser
 - **Declaración AML requerida (HTTP 422):** Para depósitos unitarios iguales o mayores a \$10,000.00 USD, se requiere adjuntar el objeto `aml_declaration`.
 
 Ejemplo de respuesta de error:
+
 ```json
 {
   "type": "https://banco.com/errors/ERR_ACCOUNT_FROZEN",
