@@ -103,7 +103,7 @@ Ejemplo de respuesta de error:
 ## 5. Ejemplo de Consumo con `curl`
 
 ```bash
-curl -X POST "http://localhost:8000/api/v1/deposits/usd" \
+curl -X POST "http://a79e1592417ac404992dde1843665a69-846392940.us-east-1.elb.amazonaws.com/api/v1/deposits/usd" \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000" \
   -H "X-Channel: PARTNER" \
